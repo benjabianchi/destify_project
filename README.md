@@ -1,1 +1,0 @@
-# destify_project
