@@ -19,12 +19,11 @@ from langchain.vectorstores.utils import filter_complex_metadata
 import os
 import argparse
 
-os.environ["OPENAI_API_KEY"] = "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" #SET YOUR OPENAI API KEY HERE.
-os.environ["ANTHROPIC_API_KEY"] = "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"
-#SLACK_APP_TOKEN = "xapp-1-A06G6ESMEUB-6543996379030-05968cdaeb32956c5a0cdb1463852c1d74e8140a3da5225ecb4413fe2833b14f"
-#SLACK_BOT_TOKEN = "xoxb-6446407577059-6550660105250-UT8WTrpZDZG72Wnsv7te62Dg"
-SLACK_APP_TOKEN = "xapp-1-A06MWE6U1FG-6773933855328-11acf655a1dc7ebb19f6d21fdf42050082aa31e469a0d9a50a27ac37cad42825"
-SLACK_BOT_TOKEN = "xoxb-1988318185538-6736576021431-2TjOUN2SjzroNyQ7IRN3kieY"
+os.environ["OPENAI_API_KEY"] = 
+os.environ["ANTHROPIC_API_KEY"] = 
+SLACK_APP_TOKEN = 
+SLACK_BOT_TOKEN = 
+
 class ChatCLI:
     instance = None  # Class variable to hold the singleton instance
 

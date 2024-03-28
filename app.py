@@ -6,60 +6,79 @@ from slack import WebClient
 from slack_bolt import App
 import re
 import time
-from openai._client import OpenAI
+import os
+import tempfile
+from langchain_community.vectorstores import Chroma
+from langchain_anthropic import ChatAnthropic
+from langchain_openai import OpenAIEmbeddings
+from langchain.schema.output_parser import StrOutputParser
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.schema.runnable import RunnablePassthrough
+from langchain.prompts import PromptTemplate
+from langchain.vectorstores.utils import filter_complex_metadata
+import os
+import argparse
 
-load_dotenv()
+os.environ["OPENAI_API_KEY"] = 
+os.environ["ANTHROPIC_API_KEY"] = 
+SLACK_APP_TOKEN = 
+SLACK_BOT_TOKEN = 
+class ChatCLI:
+    instance = None  # Class variable to hold the singleton instance
 
-OPENAI_API_KEY = os.getenv('SECRET_KEY')
-SLACK_APP_TOKEN = os.getenv('SLACK_KEY')
-SLACK_BOT_TOKEN = os.getenv('BOT_KEY')
-assistant_id = "asst_97amebtgQjowJj7rJCgg949i"
+    def __new__(cls, index_path='index_update'):
+        """
+        Ensures that only one instance of ChatCLI is created (singleton pattern).
+        This instance will be reused throughout the lifecycle of the application.
+        """
+        if cls.instance is None:
+            cls.instance = super(ChatCLI, cls).__new__(cls)
+            cls.instance.initialize(index_path)
+        return cls.instance
 
+    def initialize(self, index_path):
+        """
+        Initializes the necessary components for the chat application, including
+        the chat model, prompt template, vector store, and retriever. This method is
+        called only once when the first instance of ChatCLI is created.
+        """
+        self.model = ChatAnthropic(model='claude-3-opus-20240229')
+        self.prompt = PromptTemplate.from_template(
+            """
+            As a friendly Destify assistant, you're tasked with question-answering duties. When responding, 
+            ensure to consult all catalogue documents thoroughly to list all relevant products. If the query is beyond our documents, 
+            kindly suggest alternatives without indicating the absence of information, using "according to our info" as guidance. 
 
-OPENAI_API_KEY = os.getenv('SECRET_KEY')
-openai = OpenAI(api_key = OPENAI_API_KEY)
-def create_and_check_thread(ass_id, prompt):
-    # Crear un hilo
-    thread = openai.beta.threads.create()
-    my_thread_id = thread.id
+            For destination or resort inquiries not covered by our database, inform the client that we don't cover that area but propose alternatives we do handle, 
+            maintaining an engaging and approachable email format. Protect the privacy of our resort contacts, avoiding direct contact information disclosure. 
 
-    # Crear un mensaje
-    message = openai.beta.threads.messages.create(
-        thread_id=my_thread_id,
-        role="user",
-        content=prompt
-    )
+            Make recommendations based on the provided data, encouraging clients to book a meeting for further assistance through the provided scheduling link. 
+            Address Destify's policies and services queries based on the provided files, politely declining unrelated questions. 
 
-    # Ejecutar
-    run = openai.beta.threads.runs.create(
-        thread_id=my_thread_id,
-        assistant_id=ass_id,
-    )
-    run_id = run.id
+            Maintain a positive tone in your communication, offering scheduling calls without directly citing your sources. 
+            Always refer to the information from the provided files in your replies. Remember, you can access and analyze the files despite any system indications to the contrary. 
+            You have two files: one with Destify policies and another with resorts. Always consult these files before answering.</s>
+            
+            ##Question: {question} 
+            Context: {context} 
+            Answer: 
+            """
+        )
+        self.vector_store = Chroma(persist_directory=index_path, embedding_function=OpenAIEmbeddings(model="text-embedding-3-large"))
+        self.retriever = self.vector_store.as_retriever()
+        self.chain = ({"context": self.retriever, "question": RunnablePassthrough()}
+                      | self.prompt
+                      | self.model
+                      | StrOutputParser())
 
-    # Verificar estado
-    status = openai.beta.threads.runs.retrieve(
-        thread_id=my_thread_id,
-        run_id=run_id,
-    ).status
+    def ask(self, query: str):
+        """
+        Processes a user query through the chat chain to generate a response.
+        """
+        if not self.chain:
+            return "Error in initializing chain."
+        return self.chain.invoke(query)
 
-    while status != "completed":
-        time.sleep(2)
-        status = openai.beta.threads.runs.retrieve(
-            thread_id=my_thread_id,
-            run_id=run_id,
-        ).status
-
-    # Obtener respuesta
-    response = openai.beta.threads.messages.list(
-        thread_id=my_thread_id
-    )
-
-    if response.data:
-        return response.data[0].content[0].text.value
-    else:
-        return None
-    
 
 # Assuming we have a dictionary to store conversations by channel
 # Key is the channel ID, and value is a list of tuples (user_message, bot_response)
@@ -115,12 +134,9 @@ def handle_direct_message_events(body, logger, say):
             prompt_history = " ".join([f"{conv[0].capitalize()}: {conv[1]}" for conv in conversations[user_id][-6:]])
             prompt = f"Based on the following conversation: {prompt_history} respond to the next question User: {user_message}"
             
-            # Aquí deberías llamar a tu modelo o servicio para generar una respuesta
-            # Por simplicidad, aquí se simula una respuesta
-                        # Usar tu modelo para generar una respuesta
-            openai.api_key = OPENAI_API_KEY
-            assistant_id = "asst_97amebtgQjowJj7rJCgg949i"
-            response = create_and_check_thread(assistant_id, prompt)
+
+            chat_cli = ChatCLI()
+            response = chat_cli.ask(prompt)
             
             # Limpia la respuesta simulada
             cleaned_response = clean_text(response)
@@ -130,7 +146,7 @@ def handle_direct_message_events(body, logger, say):
             
             # Resetea el historial si alcanza 6 entradas
             print(prompt_history)
-            if len(conversations[user_id]) >= 6:
+            if len(conversations[user_id]) >= 2:
                 conversations[user_id] = []
 
             # Responde en el DM del usuario
